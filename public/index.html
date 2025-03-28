@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>实时聊天室</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    .container {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+    .connection-area, .room-form {
+      margin-bottom: 20px;
+    }
+    .chat-container {
+      display: none;
+      flex-grow: 1;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      height: 70vh;
+    }
+    .messages {
+      flex-grow: 1;
+      overflow-y: auto;
+      margin-bottom: 10px;
+      padding: 10px;
+      background-color: #f9f9f9;
+    }
+    .message {
+      margin-bottom: 8px;
+      padding: 8px;
+      border-radius: 4px;
+    }
+    .message.own {
+      background-color: #e1f5fe;
+      text-align: right;
+    }
+    .message.other {
+      background-color: #f5f5f5;
+    }
+    .user-info {
+      font-weight: bold;
+      font-size: 0.8em;
+      color: #555;
+    }
+    input, button {
+      padding: 8px;
+      margin: 5px 0;
+    }
+    button {
+      cursor: pointer;
+    }
+    .room-info {
+      margin-bottom: 10px;
+      padding: 5px;
+      background-color: #f0f0f0;
+      border-radius: 4px;
+    }
+    .message.system {
+      background-color: #e8eaf6;
+      color: #5c6bc0;
+      font-style: italic;
+      text-align: center;
+    }
+    .file-message {
+      background-color: #e8f5e9;
+      border: 1px dashed #81c784;
+      padding: 10px;
+      margin: 8px 0;
+      border-radius: 4px;
+    }
+    .file-info {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .file-icon {
+      font-size: 24px;
+    }
+    .file-details {
+      flex-grow: 1;
+    }
+    .file-name {
+      font-weight: bold;
+      margin-bottom: 5px;
+    }
+    .file-size {
+      font-size: 0.8em;
+      color: #666;
+    }
+    .file-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 8px;
+    }
+    .file-upload-area {
+      display: flex;
+      align-items: center;
+      margin-top: 10px;
+      padding: 8px;
+      border-top: 1px solid #eee;
+    }
+    .upload-progress {
+      display: none;
+      width: 100%;
+      height: 10px;
+      background-color: #e0e0e0;
+      border-radius: 5px;
+      overflow: hidden;
+      margin-top: 5px;
+    }
+    .progress-bar {
+      height: 100%;
+      background-color: #4caf50;
+      width: 0%;
+      transition: width 0.3s;
+    }
+    .download-btn {
+      background-color: #4caf50;
+      color: white;
+      border: none;
+      padding: 4px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.85em;
+    }
+    .download-btn:hover {
+      background-color: #388e3c;
+    }
+    .file-input {
+      display: none;
+    }
+    .file-label {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      cursor: pointer;
+      padding: 6px 12px;
+      background-color: #f0f0f0;
+      border-radius: 4px;
+    }
+    .file-label:hover {
+      background-color: #e0e0e0;
+    }
+  </style>ge.system.error {
+</head>ackground-color: #ffebee;
+<body>color: #c62828;
+  <div class="container">
+    <h1>实时聊天室</h1>
+    style>
+    <div class="connection-area">
+      <h2>连接到服务器</h2>
+      <input type="text" id="username" placeholder="输入您的用户名">
+    <h1>实时聊天室</h1>
+    
+    <div class="connection-area">
+      <h2>连接到服务器</h2>
+      <input type="text" id="username" placeholder="输入您的用户名">
+      <button id="connect-btn">连接</button>
+      <div id="connection-status"></div>
+    </div>
+    
+    <div class="room-form">
+      <h2>加入/创建聊天室</h2>
+      <input type="text" id="room-id" placeholder="输入聊天室ID">
+      <button id="join-btn" disabled>加入聊天室</button>
+    </div>
+    
+    <div class="chat-container" id="chat-container">
+      <div class="room-info" id="room-info">聊天室: <span id="current-room"></span> | 在线: <span id="user-count">0</span>人</div>
+      <div class="messages" id="messages"></div>
+      <div class="input-area">
+        <input type="text" id="message-input" placeholder="输入消息...">
+        <button id="send-btn">发送</button>
+          <input type="file" id="file-input" class="file-input">
+          <div class="upload-progress" id="upload-progress">
+            <div class="progress-bar" id="progress-bar"></div>
+          </div>n class="file-icon">📎</span> 选择文件
+        </div>bel>
+          <input type="file" id="file-input" class="file-input">
+          <div class="upload-progress" id="upload-progress">
+            <div class="progress-bar" id="progress-bar"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    let currentUser = null;
+    // 用于存储文件传输的对等连接
+    const peerConnections = {};
+    // 用于存储发起的文件传输
+    const fileTransfers = {};
+    // 用于存储待下载文件
+    const availableFiles = {};
+    
+    // DOM元素
+    const connectBtn = document.getElementById('connect-btn');
+    const usernameInput = document.getElementById('username');
+    const connectionStatus = document.getElementById('connection-status');
+    const joinBtn = document.getElementById('join-btn');
+    const roomIdInput = document.getElementById('room-id');
+    const chatContainer = document.getElementById('chat-container');
+    const currentRoomSpan = document.getElementById('current-room');
+    const userCountSpan = document.getElementById('user-count');
+    const messagesDiv = document.getElementById('messages');
+    const messageInput = document.getElementById('message-input');
+    const sendBtn = document.getElementById('send-btn');
+    const leaveBtn = document.getElementById('leave-btn');
+    const fileInput = document.getElementById('file-input');
+    const uploadProgress = document.getElementById('upload-progress');
+    const progressBar = document.getElementById('progress-bar');
+    
+    // 连接到服务器
+    connectBtn.addEventListener('click', () => {
+      const username = usernameInput.value.trim() || '匿名用户';
+      
+      socket.emit('user-connect', { username });
+      connectionStatus.textContent = '连接中...';
+      
+      connectBtn.disabled = true;
+      usernameInput.disabled = true;
+    });
+    
+    // 加入聊天室
+    joinBtn.addEventListener('click', () => {
+      const roomId = roomIdInput.value.trim();
+      if (roomId) {
+        socket.emit('join-room', roomId);
+        roomIdInput.disabled = true;
+        joinBtn.disabled = true;
+      }
+    });
+    
+    // 发送消息
+    sendBtn.addEventListener('click', sendMessage);
+    messageInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') sendMessage();
+    });
+    
+    function sendMessage() {
+      const content = messageInput.value.trim();
+      if (content) {
+        socket.emit('send-message', { content });
+        messageInput.value = '';
+      }
+    }
+      roomIdInput.disabled = false;
+      joinBtn.disabled = false;
+      roomIdInput.value = '';('click', () => {
+      socket.emit('leave-room');
+      chatContainer.style.display = 'none';
+      roomIdInput.disabled = false;
+      joinBtn.disabled = false;
+      roomIdInput.value = '';
+    });
+    
+    // 文件上传处理
+    fileInput.addEventListener('change', (e) => {
+      progressBar.style.width = '0%';
+      if (!file) return;
+      // 准备文件信息
+      const fileInfo = {
+        id: Date.now() + Math.random().toString(36).substr(2, 5),
+      progressBar.style.width = '0%';
+      
+      // 准备文件信息
+      const fileInfo = {
+        id: Date.now() + Math.random().toString(36).substr(2, 5),
+        name: file.name,
+        type: file.type,
+        size: file.size,
+        lastModified: file.lastModified
+      };
+      
+      // 发送文件信息到服务器
+        info: fileInfo,-info', fileInfo);
+        chunks: Math.ceil(file.size / (64 * 1024))
+      }; 存储文件以备传输
+      fileTransfers[fileInfo.id] = {
+      // 添加到自己的消息区域
+      const fileMessage = {
+        id: fileInfo.id,l(file.size / (64 * 1024))
+        type: 'file',
+        fileInfo: fileInfo,
+        sender: currentUser,
+        timestamp: Date.now()
+      };id: fileInfo.id,
+        type: 'file',
+      displayFileMessage(fileMessage, true);
+        sender: currentUser,
+      // 重置文件输入框p: Date.now()
+      fileInput.value = '';
+      uploadProgress.style.display = 'none';
+    });isplayFileMessage(fileMessage, true);
+      
+    // Socket.io 事件处理
+    socket.on('connection-established', (data) => {
+      if (data.success) {e.display = 'none';
+        connectionStatus.textContent = '已连接！用户ID: ' + data.userId;
+        currentUser = {
+          id: data.userId,
+          username: usernameInput.value.trim() || '匿名用户'
+      if (data.success) {
+        connectionStatus.textContent = '已连接！用户ID: ' + data.userId;
+        currentUser = {
+          id: data.userId,
+          username: usernameInput.value.trim() || '匿名用户'
+        };
+        joinBtn.disabled = false;
+      } else {
+        connectionStatus.textContent = '连接失败: ' + data.message;
+        connectBtn.disabled = false;
+        usernameInput.disabled = false;
+      }
+    });
+    
+    socket.on('room-joined', (data) => {
+      currentRoomSpan.textContent = data.roomId;
+      userCountSpan.textContent = data.userCount;
+      chatContainer.style.display = 'flex';
+      
+      // 清空消息区域
+      messagesDiv.innerHTML = '';f (msg.type === 'file') {
+          displayFileMessage(msg);
+      // 显示历史消息
+      data.messages.forEach(msg => {   displayMessage(msg);
+        displayMessage(msg);    }
+      });
+      
+      messageInput.focus();essageInput.focus();
+    });});
+    
+    socket.on('new-message', (message) => {
+      displayMessage(message);displayMessage(message);
+    });
+    
+    socket.on('user-joined', (data) => {
+      userCountSpan.textContent = data.userCount;erCount;
+      
+      const noticeDiv = document.createElement('div');onst noticeDiv = document.createElement('div');
+      noticeDiv.className = 'message system';  noticeDiv.className = 'message system';
+      noticeDiv.textContent = `${data.user.username} 加入了聊天室`;user.username} 加入了聊天室`;
+      messagesDiv.appendChild(noticeDiv);
+      scrollToBottom();scrollToBottom();
+    });
+    
+    socket.on('user-left', (data) => {
+      userCountSpan.textContent = data.userCount;erCount;
+      
+      const noticeDiv = document.createElement('div');onst noticeDiv = document.createElement('div');
+      noticeDiv.className = 'message system';  noticeDiv.className = 'message system';
+      noticeDiv.textContent = `${data.username} 离开了聊天室`;ata.username} 离开了聊天室`;
+      messagesDiv.appendChild(noticeDiv);eDiv);
+      scrollToBottom();crollToBottom();
+    });});
+    
+    socket.on('error', (data) => {
+      alert(`错误: ${data.message}`);;
+    });
+    
+    socket.on('disconnect', () => {
+      connectionStatus.textContent = '已断开连接';onnectionStatus.textContent = '已断开连接';
+      connectBtn.disabled = false;  connectBtn.disabled = false;
+      usernameInput.disabled = false;
+      joinBtn.disabled = true;
+      chatContainer.style.display = 'none';chatContainer.style.display = 'none';
+    });
+    
+    socket.on('new-file', (fileMessage) => {
+      displayFileMessage(fileMessage);ge);
+      
+      // 存储可下载文件信息/ 存储可下载文件信息
+      availableFiles[fileMessage.fileInfo.id] = {  availableFiles[fileMessage.fileInfo.id] = {
+        senderId: fileMessage.fileInfo.senderId,d: fileMessage.fileInfo.senderId,
+        info: fileMessage.fileInfo
+      };
+    });  const { type, senderId, fileId, chunk, chunkIndex, totalChunks, sdp, ice, targetId } = data;;
+    
+    // 处理文件传输信令
+    socket.on('file-transfer-signal', async (data) => {   peerConnections[senderId] = createPeerConnection(senderId);ket.on('file-transfer-signal', async (data) => {
+      const { type, senderId, fileId, chunk, chunkIndex, totalChunks, sdp, ice, targetId } = data;  }const { type, senderId, fileId, chunk, chunkIndex, totalChunks, sdp, ice, targetId } = data;
+      
+      if (!peerConnections[senderId]) {  const pc = peerConnections[senderId];if (!peerConnections[senderId]) {
+        peerConnections[senderId] = createPeerConnection(senderId);= createPeerConnection(senderId);
+      }
+      ype === 'offer') {
+      const pc = peerConnections[senderId];
+      SessionDescription(sdp));
+      // 处理各种WebRTC信令r();
+      if (type === 'offer') {  await pc.setLocalDescription(answer);type === 'offer') {
+        try {
+          await pc.setRemoteDescription(new RTCSessionDescription(sdp));le-transfer-signal', {eDescription(new RTCSessionDescription(sdp));
+          const answer = await pc.createAnswer();.createAnswer();
+          await pc.setLocalDescription(answer);answer);
+           sdp: pc.localDescription
+          socket.emit('file-transfer-signal', {nsfer-signal', {
+            type: 'answer',
+            targetId: senderId,   console.error('处理offer时出错:', err);   targetId: senderId,
+            sdp: pc.localDescription连接时出错，请重试');
+          });
+        } catch (err) {
+          console.error('处理offer时出错:', err);r时出错:', err);
+        } RTCSessionDescription(sdp));
+      } else if (type === 'answer') { } catch (err) {lse if (type === 'answer') {
+        try {r时出错:', err);
+          await pc.setRemoteDescription(new RTCSessionDescription(sdp));howErrorNotification('建立连接时出错，请重试');it pc.setRemoteDescription(new RTCSessionDescription(sdp));
+        } catch (err) {
+          console.error('处理answer时出错:', err);
+        }ry {
+      } else if (type === 'ice') {= 'ice') {
+        try {TCIceCandidate(ice));
+          if (ice) {   } if (ice) {
+            await pc.addIceCandidate(new RTCIceCandidate(ice)););
+          }ror('处理ICE候选时出错:', err);
+        } catch (err) {
+          console.error('处理ICE候选时出错:', err);   }   console.error('处理ICE候选时出错:', err);
+        } } else if (type === 'file-request') { }
+      } else if (type === 'file-request') {      // 收到文件请求，开始传输  } else if (type === 'file-request') {
+        // 收到文件请求，开始传输);
+        sendFileInChunks(fileId, senderId);
+      }
+    });
+    
+    function createPeerConnection(peerId) {n createPeerConnection(peerId) {
+      const pc = new RTCPeerConnection({ pc = new RTCPeerConnection({
+        iceServers: [iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' }, 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' }
+        ] = document.createElement('div');
+      });iceDiv.className = 'message system error';
+      noticeDiv.textContent = `错误: ${message}`;
+      // 创建数据通道
+      const dataChannel = pc.createDataChannel('fileTransfer', {scrollToBottom();const dataChannel = pc.createDataChannel('fileTransfer', {
+        ordered: true
+      });;
+      atePeerConnection(peerId) {
+      dataChannel.binaryType = 'arraybuffer';({uffer';
+      
+      setupDataChannel(dataChannel, peerId);' },
+      stun1.l.google.com:19302' }
+      // 监听ICE候选
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {ndidate) {
+          socket.emit('file-transfer-signal', {创建数据通道 socket.emit('file-transfer-signal', {
+            type: 'ice',nst dataChannel = pc.createDataChannel('fileTransfer', {    type: 'ice',
+            targetId: peerId,  ordered: true      targetId: peerId,
+            ice: event.candidatendidate
+          });
+        }
+      };
+      setupDataChannel(dataChannel, peerId);
+      // 处理远程数据通道变事件
+      pc.ondatachannel = (event) => { pc.onconnectionstatechange = () => { // 监听ICE候选 pc.ondatachannel = (event) => {
+        setupDataChannel(event.channel, peerId);    console.log(`与 ${peerId} 的连接状态: ${pc.connectionState}`);  pc.onicecandidate = (event) => {    setupDataChannel(event.channel, peerId);
+      };
+      nectionState === 'failed' || pc.connectionState === 'disconnected') {mit('file-transfer-signal', {
+      return pc;tion(`与用户的连接已断开，文件传输可能失败`);
+    }
+    
+    function setupDataChannel(channel, peerId) {
+      // 存储接收到的文件块
+      let receivedSize = 0;
+      let fileSize = 0;t fileSize = 0;
+      let fileName = '';channel, peerId) {
+      let fileType = '';
+      let fileId = '';t receivedSize = 0;setupDataChannel(event.channel, peerId);t fileId = '';
+      let receivedChunks = [];let fileSize = 0;};let receivedChunks = [];
+      
+      channel.onopen = () => {
+        console.log(`与 ${peerId} 的数据通道已打开`);t fileId = '';sole.log(`与 ${peerId} 的数据通道已打开`);
+      };let receivedChunks = [];
+      
+      channel.onclose = () => {
+        console.log(`与 ${peerId} 的数据通道已关闭`);console.log(`与 ${peerId} 的数据通道已打开`);t receivedSize = 0;console.log(`与 ${peerId} 的数据通道已关闭`);
+      };};let fileSize = 0;};
+      
+      channel.onerror = (error) => {
+        console.error(`数据通道错误:`, error);console.log(`与 ${peerId} 的数据通道已关闭`);t fileId = '';console.error(`数据通道错误:`, error);
+      };
+      
+      channel.onmessage = (event) => {
+        const data = event.data;nsole.error(`数据通道错误:`, error);nsole.log(`与 ${peerId} 的数据通道已打开`);nst data = event.data;
+        
+        // 如果是字符串，则是元数据
+        if (typeof data === 'string') {{
+          const metadata = JSON.parse(data);
+          
+          if (metadata.type === 'file-start') {
+            // 开始接收新文件string') {r) => {
+            fileId = metadata.fileId;parse(data); error);leId;
+            fileName = metadata.fileName;me = metadata.fileName;
+            fileSize = metadata.fileSize;
+            fileType = metadata.fileType;// 开始接收新文件l.onmessage = (event) => {fileType = metadata.fileType;
+            receivedSize = 0;
+            receivedChunks = [];data.fileName;
+            
+            console.log(`开始接收文件: ${fileName}, 大小: ${fileSize} 字节`);fileType = metadata.fileType;typeof data === 'string') {console.log(`开始接收文件: ${fileName}, 大小: ${fileSize} 字节`);
+            
+          } else if (metadata.type === 'file-end') {receivedChunks = [];se if (metadata.type === 'file-end') {
+            // 文件接收完成，组合所有块= 'file-start') {，组合所有块
+            console.log(`文件接收完成: ${fileName}`);节`);
+            fileId = metadata.fileId;
+            const fileBlob = new Blob(receivedChunks, { type: fileType });ata.type === 'file-end') {adata.fileName; = new Blob(receivedChunks, { type: fileType });
+            
+            // 创建下载链接接收完成: ${fileName}`);data.fileType;
+            const downloadLink = URL.createObjectURL(fileBlob);
+             Blob(receivedChunks, { type: fileType });
+            // 更新UI，添加下载按钮
+            const fileElem = document.getElementById(`file-${fileId}`);le-${fileId}`);
+            if (fileElem) {jectURL(fileBlob);
+              const downloadBtn = fileElem.querySelector('.download-btn');
+              if (downloadBtn) {更新UI，添加下载按钮文件接收完成，组合所有块f (downloadBtn) {
+                downloadBtn.href = downloadLink;onst fileElem = document.getElementById(`file-${fileId}`);onsole.log(`文件接收完成: ${fileName}`);   downloadBtn.href = downloadLink;
+                downloadBtn.download = fileName;if (fileElem) {    downloadBtn.download = fileName;
+                downloadBtn.disabled = false;ownloadBtn = fileElem.querySelector('.download-btn');eBlob = new Blob(receivedChunks, { type: fileType });oadBtn.disabled = false;
+                downloadBtn.textContent = '下载文件';
+              }     downloadBtn.href = downloadLink; // 创建下载链接   }
+            }downloadBtn.download = fileName;t downloadLink = URL.createObjectURL(fileBlob);
+            Btn.disabled = false;
+            // 清除接收变量ent = '下载文件';
+            receivedChunks = [];);
+          }  }  if (fileElem) {}
+        } else {wnloadBtn = fileElem.querySelector('.download-btn');
+          // 二进制数据，接收文件块
+          receivedChunks.push(data);  receivedChunks = [];      downloadBtn.href = downloadLink;receivedChunks.push(data);
+          receivedSize += data.byteLength;nload = fileName;e += data.byteLength;
+          
+          // 更新进度n.textContent = '下载文件';
+          const progress = Math.round((receivedSize / fileSize) * 100);
+          .byteLength;
+          // 更新UI显示进度
+          const fileElem = document.getElementById(`file-${fileId}`);更新进度/ 清除接收变量st fileElem = document.getElementById(`file-${fileId}`);
+          if (fileElem) {onst progress = Math.round((receivedSize / fileSize) * 100); receivedChunks = [];f (fileElem) {
+            const progressBar = fileElem.querySelector('.progress-bar');  }   const progressBar = fileElem.querySelector('.progress-bar');
+            if (progressBar) {  // 更新UI显示进度} else {    if (progressBar) {
+              progressBar.style.width = `${progress}%`;    const fileElem = document.getElementById(`file-${fileId}`);    // 二进制数据，接收文件块        progressBar.style.width = `${progress}%`;
+            }m) {nks.push(data);
+          }       const progressBar = fileElem.querySelector('.progress-bar');     receivedSize += data.byteLength;     }
+        }        if (progressBar) {          }
+      }; progressBar.style.width = `${progress}%`;更新进度
+      ileSize) * 100);
+      return channel;
+    }
+    };    const fileElem = document.getElementById(`file-${fileId}`);
+    // 请求下载文件
+    function requestFile(fileId) {return channel;      const progressBar = fileElem.querySelector('.progress-bar');nction requestFile(fileId) {
+      const fileInfo = availableFiles[fileId];leId];
+      if (!fileInfo) return;
+      
+      const { senderId } = fileInfo;tion requestFile(fileId) {  }nst { senderId } = fileInfo;
+      = availableFiles[fileId];
+      // 如果没有与发送者的连接，创建一个
+      if (!peerConnections[senderId]) {eerConnections[senderId]) {
+        peerConnections[senderId] = createPeerConnection(senderId); = fileInfo;derId] = createPeerConnection(senderId);
+        
+        // 创建并发送offer一个
+        const pc = peerConnections[senderId];
+        erId] = createPeerConnection(senderId);eId) {
+        pc.createOffer()
+          .then(offer => pc.setLocalDescription(offer))
+          .then(() => {c = peerConnections[senderId];
+            socket.emit('file-transfer-signal', {nderId } = fileInfo;socket.emit('file-transfer-signal', {
+              type: 'offer',)
+              targetId: senderId,> pc.setLocalDescription(offer))一个 senderId,
+              sdp: pc.localDescription
+            });fer-signal', { createPeerConnection(senderId);
+          })
+          .then(() => {erId,
+            // 发送文件请求信令dp: pc.localDescriptionc = peerConnections[senderId];发送文件请求信令
+            socket.emit('file-transfer-signal', {});et.emit('file-transfer-signal', {
+              type: 'file-request',
+              targetId: senderId,n(() => {n(offer => pc.setLocalDescription(offer))targetId: senderId,
+              fileId: fileIdId
+            });', {', {
+          })st',
+          .catch(err => console.error('创建offer出错:', err));rId,rId,le.error('创建offer出错:', err));
+      } else {leIdcalDescription
+        // 已有连接，直接发送文件请求 }); });已有连接，直接发送文件请求
+        socket.emit('file-transfer-signal', {   })   }) socket.emit('file-transfer-signal', {
+          type: 'file-request',    .catch(err => console.error('创建offer出错:', err));    .then(() => {    type: 'file-request',
+          targetId: senderId,senderId,
+          fileId: fileId
+        });file-transfer-signal', {file-request',
+      }
+      Id,Id
+      // 更新UI显示请求状态
+      const fileElem = document.getElementById(`file-${fileId}`);
+      if (fileElem) {catch(err => console.error('创建offer出错:', err));(fileElem) {
+        const downloadBtn = fileElem.querySelector('.download-btn');else { const downloadBtn = fileElem.querySelector('.download-btn');
+        if (downloadBtn) { // 更新UI显示请求状态   // 已有连接，直接发送文件请求   if (downloadBtn) {
+          downloadBtn.textContent = '接收中...';  const fileElem = document.getElementById(`file-${fileId}`);    socket.emit('file-transfer-signal', {      downloadBtn.textContent = '接收中...';
+          downloadBtn.disabled = true;lem) { 'file-request',oadBtn.disabled = true;
+        }r('.download-btn');
+      }
+    }ntent = '接收中...';
+        downloadBtn.disabled = true;}
+    // 发送文件（分块）
+    function sendFileInChunks(fileId, targetId) {
+      const transfer = fileTransfers[fileId];entById(`file-${fileId}`); fileTransfers[fileId];
+      if (!transfer) return; (fileElem) {if (!transfer) return;
+      dBtn = fileElem.querySelector('.download-btn');
+      const { file, info } = transfer;argetId) {
+      const pc = peerConnections[targetId];
+      if (!pc) return;
+      
+      // 获取或创建数据通道
+      let dataChannel = pc.dataChannel;etId];
+      if (!dataChannel || dataChannel.readyState !== 'open') {f (!pc) return;!dataChannel || dataChannel.readyState !== 'open') {
+        dataChannel = pc.createDataChannel('fileTransfer'); 发送文件（分块）  dataChannel = pc.createDataChannel('fileTransfer');
+        dataChannel.binaryType = 'arraybuffer';数据通道endFileInChunks(fileId, targetId) {annel.binaryType = 'arraybuffer';
+        setupDataChannel(dataChannel, targetId);;ileId];targetId);
+        pc.dataChannel = dataChannel;yState !== 'open') {
+      } pc.createDataChannel('fileTransfer');
+      yType = 'arraybuffer';} = transfer;
+      // 文件读取器
+      const reader = new FileReader();  pc.dataChannel = dataChannel;if (!pc) return;const reader = new FileReader();
+      const chunkSize = 64 * 1024; // 64KB// 64KB
+      let offset = 0;
+      let chunkIndex = 0;
+      const totalChunks = Math.ceil(file.size / chunkSize);w FileReader();|| dataChannel.readyState !== 'open') { = Math.ceil(file.size / chunkSize);
+       1024; // 64KBateDataChannel('fileTransfer');
+      // 发送文件元数据rraybuffer';
+      dataChannel.send(JSON.stringify({annel, targetId);stringify({
+        type: 'file-start',eil(file.size / chunkSize);nnel;
+        fileId: fileId,ileId,
+        fileName: file.name,// 发送文件元数据  fileName: file.name,
+        fileSize: file.size,.send(JSON.stringify({le.size,
+        fileType: file.type,er();
+        totalChunks: totalChunks
+      }));
+      
+      // 读取并发送文件块type, = Math.ceil(file.size / chunkSize);
+      reader.onload = (e) => {talChunks: totalChunksnload = (e) => {
+        if (dataChannel.readyState === 'open') {eadyState === 'open') {
+          dataChannel.send(e.target.result);
+          offset += e.target.result.byteLength;
+          chunkIndex++;er.onload = (e) => {leId: fileId,chunkIndex++;
+          .readyState === 'open') {name,
+          // 更新进度.result);
+          const progress = Math.round((offset / file.size) * 100);rget.result.byteLength;ype, = Math.round((offset / file.size) * 100);
+          progressBar.style.width = `${progress}%`;ex++;s: totalChunksBar.style.width = `${progress}%`;
+          
+          // 继续读取下一块或结束
+          if (offset < file.size) {.round((offset / file.size) * 100);
+            readSlice();width = `${progress}%`; {
+          } else {l.readyState === 'open') { {
+            // 发送文件结束信号 继续读取下一块或结束taChannel.send(e.target.result);// 发送文件结束信号
+            dataChannel.send(JSON.stringify({ < file.size) {e.target.result.byteLength;nel.send(JSON.stringify({
+              type: 'file-end',
+              fileId: fileId
+            })); // 发送文件结束信号/ 更新进度 }));
+               dataChannel.send(JSON.stringify({ const progress = Math.round((offset / file.size) * 100);   
+            // 重置进度条      type: 'file-end',  progressBar.style.width = `${progress}%`;    // 重置进度条
+            uploadProgress.style.display = 'none';        fileId: fileId          uploadProgress.style.display = 'none';
+            progressBar.style.width = '0%';取下一块或结束ressBar.style.width = '0%';
+          }
+        }
+      }; = 'none';
+          progressBar.style.width = '0%';    // 发送文件结束信号
+      // 读取文件块函数    }      dataChannel.send(JSON.stringify({// 读取文件块函数
+      const readSlice = () => {e: 'file-end',eadSlice = () => {
+        const slice = file.slice(offset, offset + chunkSize);e = file.slice(offset, offset + chunkSize);
+        reader.readAsArrayBuffer(slice);        }));   reader.readAsArrayBuffer(slice);
+      };  // 读取文件块函数          };
+      eadSlice = () => {/ 重置进度条
+      // 开始读取ze);
+      readSlice();
+    }
+      }
+    // 显示文件消息
+    function displayFileMessage(message, isOwn = false) {
+      const { fileInfo, sender } = message;
+      const isOwnMessage = isOwn || (currentUser && sender.id === currentUser.id);nst readSlice = () => {const isOwnMessage = isOwn || (currentUser && sender.id === currentUser.id);
+      
+      const messageDiv = document.createElement('div');sOwn = false) {ent('div');
+      messageDiv.className = `message ${isOwnMessage ? 'own' : 'other'}`;
+      messageDiv.id = `message-${message.id}`;ntUser && sender.id === currentUser.id);
+      // 开始读取
+      const userInfoDiv = document.createElement('div');');
+      userInfoDiv.className = 'user-info';sOwnMessage ? 'own' : 'other'}`;
+      userInfoDiv.textContent = isOwnMessage ? '我' : sender.username;id}`;
+      messageDiv.appendChild(userInfoDiv); 显示文件消息messageDiv.appendChild(userInfoDiv);
+      {
+      const fileDiv = document.createElement('div');;nt('div');
+      fileDiv.className = 'file-message';userInfoDiv.textContent = isOwnMessage ? '我' : sender.username;const isOwnMessage = isOwn || (currentUser && sender.id === currentUser.id);fileDiv.className = 'file-message';
+      fileDiv.id = `file-${fileInfo.id}`;
+      
+      const fileInfoDiv = document.createElement('div');ateElement('div');age ${isOwnMessage ? 'own' : 'other'}`;.createElement('div');
+      fileInfoDiv.className = 'file-info';;.id}`;';
+      fileDiv.id = `file-${fileInfo.id}`;
+      const fileIcon = document.createElement('div');
+      fileIcon.className = 'file-icon';('div');
+      fileIcon.textContent = '📄';fileInfoDiv.className = 'file-info';userInfoDiv.textContent = isOwnMessage ? '我' : sender.username;fileIcon.textContent = '📄';
+      fileInfoDiv.appendChild(fileIcon);
+      lement('div');
+      const fileDetailsDiv = document.createElement('div');iv');eElement('div');
+      fileDetailsDiv.className = 'file-details';
+      fileInfoDiv.appendChild(fileIcon);fileDiv.id = `file-${fileInfo.id}`;
+      const fileName = document.createElement('div');
+      fileName.className = 'file-name';reateElement('div');teElement('div');
+      fileName.textContent = fileInfo.name;
+      fileDetailsDiv.appendChild(fileName);
+      const fileName = document.createElement('div');const fileIcon = document.createElement('div');
+      const fileSize = document.createElement('div');
+      fileSize.className = 'file-size';ame;
+      fileSize.textContent = formatFileSize(fileInfo.size);fileDetailsDiv.appendChild(fileName);fileInfoDiv.appendChild(fileIcon);fileSize.textContent = formatFileSize(fileInfo.size);
+      fileDetailsDiv.appendChild(fileSize);
+      
+      fileInfoDiv.appendChild(fileDetailsDiv);
+      fileDiv.appendChild(fileInfoDiv);leSize.textContent = formatFileSize(fileInfo.size);Div.appendChild(fileInfoDiv);
+      
+      if (!isOwnMessage) {
+        const fileActionsDiv = document.createElement('div');Div);e;reateElement('div');
+        fileActionsDiv.className = 'file-actions';nfoDiv);d(fileName);e = 'file-actions';
+        
+        const downloadBtn = document.createElement('a');createElement('div');ocument.createElement('a');
+        downloadBtn.className = 'download-btn';ment.createElement('div');ze';wnload-btn';
+        downloadBtn.textContent = '请求下载';leActionsDiv.className = 'file-actions';Size.textContent = formatFileSize(fileInfo.size);wnloadBtn.textContent = '请求下载';
+        downloadBtn.href = '#';
+        downloadBtn.onclick = (e) => {const downloadBtn = document.createElement('a');wnloadBtn.onclick = (e) => {
+          e.preventDefault();n';);
+          requestFile(fileInfo.id);downloadBtn.textContent = '请求下载';leDiv.appendChild(fileInfoDiv);  requestFile(fileInfo.id);
+        };tn.href = '#';
+        fileActionsDiv.appendChild(downloadBtn);
+        
+        fileDiv.appendChild(fileActionsDiv);
+        };
+        // 添加进度显示
+        const progressDiv = document.createElement('div');
+        progressDiv.className = 'upload-progress';);gress';
+        progressDiv.style.display = 'block';downloadBtn.href = '#';progressDiv.style.display = 'block';
+        
+        const progressBarDiv = document.createElement('div');teElement('div');('div');
+        progressBarDiv.className = 'progress-bar'; progressDiv.className = 'upload-progress';   requestFile(fileInfo.id); progressBarDiv.className = 'progress-bar';
+        progressBarDiv.style.width = '0%';  progressDiv.style.display = 'block';  };  progressBarDiv.style.width = '0%';
+        
+        progressDiv.appendChild(progressBarDiv);eateElement('div');
+        fileDiv.appendChild(progressDiv);className = 'progress-bar';hild(fileActionsDiv);hild(progressDiv);
+      }   progressBarDiv.style.width = '0%';    }
+              // 添加进度显示  
+      messageDiv.appendChild(fileDiv);ssDiv.appendChild(progressBarDiv);progressDiv = document.createElement('div');iv.appendChild(fileDiv);
+      messagesDiv.appendChild(messageDiv);Div);oad-progress';eDiv);
+      scrollToBottom();
+    }
+    
+    // 格式化文件大小
+    function formatFileSize(bytes) { scrollToBottom();   progressBarDiv.style.width = '0%';unction formatFileSize(bytes) {
+      if (bytes < 1024) return bytes + ' bytes';}      if (bytes < 1024) return bytes + ' bytes';
+      else if (bytes < 1048576) return (bytes / 1024).toFixed(2) + ' KB';2) + ' KB';
+      else if (bytes < 1073741824) return (bytes / 1048576).toFixed(2) + ' MB';
+      else return (bytes / 1073741824).toFixed(2) + ' GB';
+    }if (bytes < 1024) return bytes + ' bytes';
+    
+    function displayMessage(message) {else if (bytes < 1073741824) return (bytes / 1048576).toFixed(2) + ' MB';messagesDiv.appendChild(messageDiv);nction displayMessage(message) {
+      const messageDiv = document.createElement('div');';
+      const isOwnMessage = currentUser && message.sender.id === currentUser.id;
+      
+      messageDiv.className = `message ${isOwnMessage ? 'own' : 'other'}`;
+      const messageDiv = document.createElement('div');nction formatFileSize(bytes) {const isOwnMessage = currentUser && message.sender.id === currentUser.id;
+      const userInfoDiv = document.createElement('div');r.id === currentUser.id;
+      userInfoDiv.className = 'user-info'; 'other'}`;
+      userInfoDiv.textContent = isOwnMessage ? '我' : message.sender.username;sOwnMessage ? 'own' : 'other'}`; (bytes / 1048576).toFixed(2) + ' MB';
+      messageDiv.appendChild(userInfoDiv);else return (bytes / 1073741824).toFixed(2) + ' GB';const userInfoDiv = document.createElement('div');
+      lement('div');
+      const contentDiv = document.createElement('div');Name = 'user-info';ge ? '我' : message.sender.username;
+      contentDiv.textContent = message.content; userInfoDiv.textContent = isOwnMessage ? '我' : message.sender.username;unction displayMessage(message) { messageDiv.appendChild(userInfoDiv);
+      messageDiv.appendChild(contentDiv);  messageDiv.appendChild(userInfoDiv);  const messageDiv = document.createElement('div');  
+      .id === currentUser.id;nt.createElement('div');
+      messagesDiv.appendChild(messageDiv);
+      scrollToBottom(); contentDiv.textContent = message.content; messageDiv.className = `message ${isOwnMessage ? 'own' : 'other'}`; messageDiv.appendChild(contentDiv);
+    }geDiv.appendChild(contentDiv);
+    nst userInfoDiv = document.createElement('div');essagesDiv.appendChild(messageDiv);
+    function scrollToBottom() {essagesDiv.appendChild(messageDiv);serInfoDiv.className = 'user-info';crollToBottom();
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;      scrollToBottom();      userInfoDiv.textContent = isOwnMessage ? '我' : message.sender.username;    }
+
+
+
+
+
+</html></body>  </script>    }
+
+
+
+
+
+
+
+
+</html></body>  </script>    }      messagesDiv.scrollTop = messagesDiv.scrollHeight;    function scrollToBottom() {        }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</html></body>  </script>    }      messagesDiv.scrollTop = messagesDiv.scrollHeight;    function scrollToBottom() {        }      scrollToBottom();      messagesDiv.appendChild(messageDiv);            messageDiv.appendChild(contentDiv);      contentDiv.textContent = message.content;      const contentDiv = document.createElement('div');            messageDiv.appendChild(userInfoDiv);    
+    function scrollToBottom() {
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+  </script>
+</body>
+</html>
